@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>客服工作台 · AI 智能客服 MVP</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    .wb-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .scope-tabs { display: flex; gap: 4px; padding: 8px 12px 6px; flex-wrap: wrap; }
+    .scope-tabs .tab { font-size: 12.5px; padding: 6px 10px; }
+    .conv { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+    .conv-head { padding: 10px 14px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
+    .conv-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+    .reply-box { border-top: 1px solid var(--line); padding: 10px 14px; flex: 0 0 auto; }
+    .reply-row { display: flex; gap: 8px; align-items: flex-end; }
+    .reply-row textarea { resize: none; max-height: 110px; }
+    .canned { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; max-height: 76px; overflow-y: auto; }
+    .badge-line { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
+    .kv { display: grid; grid-template-columns: 84px 1fr; gap: 4px 8px; font-size: 12.5px; }
+    .kv dt { color: var(--ink-3); }
+    .kv dd { margin: 0; word-break: break-word; }
+    .waiting { font-size: 11.5px; color: var(--warn); }
+  </style>
+</head>
+<body>
+<div class="app wide">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">CS</div>
+      <div>
+        <h1>客服工作台</h1>
+        <p>会话接入 · 上下文同步 · 常用语 · 会话归因</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span id="me-badge" class="badge gray">加载中…</span>
+      <select id="agent-select" style="width:150px;" title="演示模式：切换当前客服"></select>
+      <select id="status-select" style="width:110px;">
+        <option value="online">在线</option>
+        <option value="busy">忙碌</option>
+        <option value="offline">离线</option>
+      </select>
+      <a class="btn ghost" href="/">用户端</a>
+      <a class="btn ghost" href="/dashboard">看板</a>
+      <a class="btn" href="/admin">后台</a>
+    </div>
+  </header>
+
+  <div class="workbench">
+    <!-- 左：会话列表 -->
+    <section class="panel">
+      <div class="panel-head">
+        <span>会话列表</span>
+        <button class="btn sm" id="btn-refresh">刷新</button>
+      </div>
+      <div class="scope-tabs" id="scope-tabs">
+        <button class="tab active" data-scope="pending">待接入 <span id="cnt-pending">0</span></button>
+        <button class="tab" data-scope="mine">我的会话</button>
+        <button class="tab" data-scope="all">全部进行中</button>
+        <button class="tab" data-scope="closed">已结束</button>
+      </div>
+      <div class="panel-body" id="session-list"></div>
+    </section>
+
+    <!-- 中：对话 -->
+    <section class="panel">
+      <div class="conv">
+        <div class="conv-head" id="conv-head">
+          <div class="flex-between">
+            <b id="conv-title">未选择会话</b>
+            <div>
+              <button class="btn sm primary" id="btn-accept" style="display:none;">接入会话</button>
+              <button class="btn sm danger" id="btn-close-session" style="display:none;">结束会话</button>
+            </div>
+          </div>
+          <div class="badge-line" id="conv-badges"></div>
+        </div>
+        <div class="conv-body" id="conv-body">
+          <div class="empty">从左侧选择一条会话开始接待</div>
+        </div>
+        <div class="reply-box">
+          <div class="canned" id="canned-list"></div>
+          <div class="reply-row">
+            <textarea id="reply-input" rows="2" placeholder="输入回复内容，回车发送 / Shift+Enter 换行"></textarea>
+            <button class="btn primary" id="btn-reply">发送</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 右：上下文摘要 + 常用语管理 -->
+    <section class="panel side-right">
+      <div class="panel-head"><span>上下文摘要</span></div>
+      <div class="panel-body" id="summary">
+        <div class="empty">选择会话后显示</div>
+      </div>
+      <div class="panel-head" style="border-top:1px solid var(--line);">
+        <span>常用语管理</span>
+        <button class="btn sm" id="btn-canned-add">+ 新增</button>
+      </div>
+      <div class="panel-body" id="canned-manage" style="max-height:200px;"></div>
+    </section>
+  </div>
+</div>
+
+<div class="modal-mask" id="canned-modal">
+  <div class="modal">
+    <h3>新增常用语</h3>
+    <div class="field"><label>标题 *</label><input type="text" id="cm-title" placeholder="例如：退货流程说明" /></div>
+    <div class="field"><label>内容 *</label><textarea id="cm-content" rows="4" placeholder="客服一键发送的内容"></textarea></div>
+    <div class="field">
+      <label>范围</label>
+      <select id="cm-scope">
+        <option value="team">团队公共</option>
+        <option value="personal">我的个人</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="cm-cancel">取消</button>
+      <button class="btn primary" id="cm-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="/static/agent.js"></script>
+</body>
+</html>

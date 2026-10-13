@@ -1,0 +1,763 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>运营后台 · AI 智能客服 MVP</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    /* ================================================================
+       本页独有样式（禁止改动 style.css，故只在此处补充）
+       ================================================================ */
+
+    /* 页签内容区：只显示当前页签 */
+    .tab-pane { display: none; flex-direction: column; gap: 12px; min-height: 0; }
+    .tab-pane.active { display: flex; }
+
+    /* 卡片撑满可用高度（列表页） */
+    .card.fill { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+    /* 表格滚动区高度（sticky 表头依赖此滚动容器） */
+    .table-wrap { max-height: 56vh; }
+    .table-wrap.tall { max-height: 64vh; }
+
+    /* 工具栏内的表单控件：不要撑满整行，按需自适应 */
+    .toolbar .grow { flex: 1 1 260px; min-width: 200px; }
+    .toolbar select { width: auto; min-width: 128px; }
+    .toolbar input[type=date] { width: auto; min-width: 148px; }
+    .toolbar input[type=text], .toolbar input[type=search] { min-width: 200px; }
+    .toolbar .btn { flex: 0 0 auto; }
+
+    /* style.css 只覆盖了 text/search/textarea/select，这里补齐其余控件样式 */
+    input[type=date], input[type=time], input[type=number], input[type=password],
+    input[type=file], input[type=email] {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 11px;
+      font-size: 13.5px;
+      font-family: inherit;
+      color: var(--ink);
+      background: #fff;
+      outline: none;
+      transition: .15s;
+      width: 100%;
+    }
+    input[type=date]:focus, input[type=time]:focus, input[type=number]:focus,
+    input[type=password]:focus, input[type=file]:focus {
+      border-color: var(--brand); box-shadow: 0 0 0 3px rgba(79,110,247,.12);
+    }
+    input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--brand); vertical-align: -2px; }
+    .check-line { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink-2); }
+    .check-line label { margin: 0; }
+
+    /* 知识库表格列宽控制 */
+    td.ans-cell { color: var(--ink-2); max-width: 260px; }
+    .cell-clip { display: block; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cell-clip.wide { max-width: 300px; }
+
+    /* 检索测试结果 */
+    .test-result .item { align-items: flex-start; }
+    .test-result .item .hit { min-width: 0; word-break: break-word; }
+    .test-result .item .score { text-align: right; white-space: nowrap; }
+    .test-result code { background: #f1f3f9; padding: 1px 5px; border-radius: 5px; font-size: 11.5px; }
+    .thr-line { margin-bottom: 8px; }
+
+    /* 文档详情 */
+    .doc-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .chunk-ans { color: var(--ink-2); max-width: 420px; }
+    .file-hint { font-size: 11.5px; color: var(--ink-3); margin-top: 5px; }
+
+    /* 会话详情弹窗 */
+    .modal.wide { width: min(880px, 100%); }
+    .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px 14px; }
+    .kv > div { font-size: 12.5px; }
+    .kv .k { color: var(--ink-3); font-size: 11.5px; }
+    .kv .v { color: var(--ink); word-break: break-word; }
+    .chat-log { display: flex; flex-direction: column; gap: 10px; max-height: 44vh; overflow: auto; padding: 6px 2px; }
+    .msg-line {
+      max-width: 86%; border-radius: 12px; padding: 8px 12px; background: #f5f7fc;
+      border: 1px solid var(--line); white-space: pre-wrap; word-break: break-word; font-size: 13px;
+    }
+    .msg-line.user { align-self: flex-end; background: linear-gradient(135deg, var(--brand), var(--brand-2)); color: #fff; border: none; }
+    .msg-line.agent { background: #e7f8f0; border-color: #c6eeda; }
+    .msg-line.system { align-self: center; background: #fff8e6; border-color: #f7e2b5; font-size: 12.5px; color: #8a5a00; }
+    .msg-head { display: flex; justify-content: space-between; gap: 10px; font-size: 11.5px; color: var(--ink-3); margin-bottom: 4px; }
+    .msg-line.user .msg-head { color: rgba(255,255,255,.88); }
+    .src-list { margin-top: 6px; padding-top: 5px; border-top: 1px dashed var(--line); font-size: 11.5px; color: var(--ink-3); }
+    .msg-line.user .src-list { border-top-color: rgba(255,255,255,.35); color: rgba(255,255,255,.9); }
+    .handoff-item { border: 1px solid var(--line); border-radius: 10px; padding: 8px 11px; margin-bottom: 8px; font-size: 12.5px; }
+    .csat-box { background: #f8faff; border: 1px solid #e3e9f8; border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+
+    /* 服务时段编辑器 */
+    .hour-row { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; border-bottom: 1px dashed var(--line); }
+    .hour-row:last-child { border-bottom: none; }
+    .hour-row .day { flex: 0 0 66px; font-size: 12.5px; color: var(--ink-2); padding-top: 8px; }
+    .hour-row .ranges { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .range-row { display: flex; align-items: center; gap: 6px; }
+    .range-row input[type=time] { width: 118px; flex: 0 0 auto; }
+    .range-row .sep { color: var(--ink-3); font-size: 12px; }
+    .range-row.off input[type=time] { background: #f4f6fb; color: var(--ink-3); }
+    .hour-row .off-tip { font-size: 12px; color: var(--ink-3); padding: 8px 0; }
+
+    /* 槽位规则（只读） */
+    .slot-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+    .slot-card h4 { margin: 0 0 4px; font-size: 13px; }
+    .slot-card .opt { font-size: 11.5px; margin-top: 5px; }
+
+    /* 触发规则词表 */
+    .word-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    /* 账号 / 客服 */
+    .dt-name { display: flex; align-items: center; gap: 6px; }
+    .modal .role-hint { font-size: 11.5px; color: var(--ink-3); margin-top: 4px; }
+
+    /* ---------------- 向量召回（Embedding）面板 ---------------- */
+    /* 状态小卡片 */
+    .embed-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(184px, 1fr)); gap: 10px; }
+    .embed-stat { border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; background: #fbfcff; min-width: 0; }
+    .embed-stat .k { font-size: 11.5px; color: var(--ink-3); margin-bottom: 3px; }
+    .embed-stat .v { font-size: 15px; font-weight: 620; line-height: 1.35; word-break: break-word; }
+    .embed-stat .v small { font-size: 11.5px; font-weight: 400; color: var(--ink-3); }
+    .embed-stat .badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+    .embed-stat .badges .tag { margin-right: 0; }
+    .embed-note { font-size: 11.5px; color: var(--ink-3); line-height: 1.6; margin-top: 5px; }
+    /* 提示条（离线 / 关闭 / 缺 Key） */
+    .embed-tip { border-radius: 10px; padding: 9px 12px; font-size: 12.5px; line-height: 1.65; margin-top: 10px; }
+    .embed-tip.info { background: #f3f6ff; border: 1px solid #dfe6fb; color: #33418c; }
+    .embed-tip.warn { background: #fff8e6; border: 1px solid #f7e2b5; color: #8a5a00; }
+    .embed-tip.bad { background: #fff1f0; border: 1px solid #fbd5d1; color: #b42318; }
+    .embed-tip b { font-weight: 650; }
+    /* 一键示例问题 chips */
+    .embed-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 9px; }
+    /* 两列对照结果 */
+    .embed-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 10px; margin-top: 10px; }
+    .embed-col { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+    .embed-col .head {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 8px 11px; background: #f7f9fd; border-bottom: 1px solid var(--line);
+      font-size: 12.5px; font-weight: 620; color: var(--ink-2);
+    }
+    .embed-col.vector .head { background: linear-gradient(135deg, #eef2ff, #f3ebff); color: #3b3fd0; }
+    .embed-col .body { padding: 9px 10px; }
+    .embed-hit {
+      display: flex; justify-content: space-between; gap: 10px;
+      padding: 7px 9px; border: 1px solid var(--line); border-radius: 9px; margin-bottom: 6px;
+    }
+    .embed-hit:last-child { margin-bottom: 0; }
+    .embed-hit .main { min-width: 0; }
+    .embed-hit .q { font-weight: 550; font-size: 12.5px; word-break: break-word; }
+    .embed-hit .badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+    .embed-hit .score { text-align: right; white-space: nowrap; }
+    .embed-hit .score b { font-size: 17px; letter-spacing: -.3px; }
+    .embed-hit .calc { font-size: 11px; color: var(--ink-3); margin-top: 3px; font-variant-numeric: tabular-nums; }
+    .embed-hit.gain { border-color: #bfe8d3; background: #f6fdf9; }
+    /* 差异横幅 */
+    .embed-delta {
+      border: 1px solid #d9e0f5; background: linear-gradient(135deg, #f3f6ff, #f7f3ff);
+      border-radius: 10px; padding: 10px 12px; margin-top: 10px; font-size: 12.5px; line-height: 1.7;
+    }
+    .embed-delta .title { font-weight: 650; color: #3b3fd0; margin-bottom: 3px; }
+    .embed-delta.miss { border-color: var(--line); background: #f8fafd; }
+    .embed-delta.miss .title { color: var(--ink-2); }
+    .embed-kv { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+<div class="app wide">
+  <!-- ============================================================ 顶栏 -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">AI</div>
+      <div>
+        <h1>AI 智能客服 · 运营后台</h1>
+        <p>
+          知识库 <b id="kb-count">—</b> 条 · 文档 <b id="doc-count">—</b> 个 ·
+          <span id="service-hours-text">服务时段加载中…</span>
+        </p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span class="badge gray" id="badge-knowledge">知识 0 条</span>
+      <span class="badge gray" id="badge-service">服务状态加载中…</span>
+      <span class="badge gray" id="badge-threshold">阈值 —</span>
+      <span class="badge ctx" id="badge-account" style="display:none;">—</span>
+      <button class="btn sm ghost" id="btn-logout" style="display:none;">退出登录</button>
+      <a class="btn sm" href="/">用户端</a>
+      <a class="btn sm" href="/agent">客服工作台</a>
+      <a class="btn sm" href="/dashboard">数据看板</a>
+    </div>
+  </header>
+
+  <!-- ============================================================ 页签 -->
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-tab="kb">知识库</button>
+    <button class="tab" data-tab="docs">文档导入</button>
+    <button class="tab" data-tab="sessions">会话记录</button>
+    <button class="tab" data-tab="fallbacks">未解决问题</button>
+    <button class="tab" data-tab="bot">机器人设置</button>
+    <button class="tab" data-tab="rules">触发规则</button>
+    <button class="tab" data-tab="agents">客服与账号</button>
+  </div>
+
+  <main class="admin-main">
+
+    <!-- ======================================================== 1. 知识库 -->
+    <section class="tab-pane active" id="pane-kb">
+      <div class="card">
+        <h2>🔍 检索测试 <span class="sub">模拟用户提问，实时查看命中分数、命中等级与槽位澄清判定（不改动数据）</span></h2>
+        <div class="toolbar">
+          <div class="grow">
+            <input type="text" id="kt-query" placeholder="例如：我要退货，运费谁出" />
+          </div>
+          <button class="btn primary" id="kt-run">测试</button>
+        </div>
+        <div class="test-result" id="kt-result"></div>
+      </div>
+
+      <div class="card fill">
+        <h2>
+          知识条目
+          <span class="sub" id="kb-tip">新增 / 编辑 / 删除即时生效，机器人下一次回答就会用到</span>
+        </h2>
+        <div class="toolbar" style="margin-bottom:12px;">
+          <div class="grow"><input type="search" id="kb-search" placeholder="搜索标准问 / 标准答 / 相似问 / 关键词（输入即搜，250ms 防抖）" /></div>
+          <select id="kb-category" title="按分类筛选"><option value="">全部分类</option></select>
+          <select id="kb-enabled" title="按状态筛选">
+            <option value="">全部状态</option>
+            <option value="true">已启用</option>
+            <option value="false">已停用</option>
+          </select>
+          <button class="btn primary" id="kb-new">+ 新增知识</button>
+          <button class="btn ghost" id="kb-reset">重置为种子数据</button>
+        </div>
+
+        <div class="table-wrap tall">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:52px;">ID</th>
+                <th style="width:92px;">分类</th>
+                <th>标准问</th>
+                <th>标准答</th>
+                <th style="width:150px;">相似问</th>
+                <th style="width:120px;">关键词</th>
+                <th style="width:96px;">槽位</th>
+                <th style="width:76px;">状态</th>
+                <th style="width:112px;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="kb-tbody"></tbody>
+          </table>
+          <div class="empty" id="kb-empty" style="display:none;">暂无数据</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================== 2. 文档导入 -->
+    <section class="tab-pane" id="pane-docs">
+      <div class="grid grid-2">
+        <div class="card">
+          <h2>📥 导入文档 <span class="sub">粘贴正文或上传文件，自动切分为知识切片，默认先入草稿</span></h2>
+
+          <div class="field">
+            <label for="doc-title">文档标题 *</label>
+            <input type="text" id="doc-title" placeholder="例如：售后退货手册" />
+          </div>
+          <div class="field">
+            <label for="doc-category">分类</label>
+            <input type="text" id="doc-category" list="cat-list" placeholder="例如：售后政策（留空则用文档标题）" />
+          </div>
+          <div class="field">
+            <label for="doc-content">粘贴正文</label>
+            <textarea id="doc-content" rows="8" placeholder="支持「标题行 + 正文」结构，示例如下：&#10;退货运费说明&#10;质量问题由我方承担运费……&#10;&#10;发票申请流程&#10;订单详情页点击申请发票……"></textarea>
+            <div class="help">切分规则：按标题行与空行分段，片段过短会向后合并、过长按句子拆分。</div>
+          </div>
+          <div class="flex-between" style="margin-bottom:12px;">
+            <button class="btn primary" id="doc-import-text">导入粘贴文本</button>
+            <div class="check-line">
+              <input type="checkbox" id="doc-publish" />
+              <label for="doc-publish">直接发布（不勾选则先入草稿，需预览确认后发布生效）</label>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="field">
+            <label for="doc-file">或选择文件上传（.txt / .md / .docx，≤5MB）</label>
+            <div class="row">
+              <input type="file" id="doc-file" accept=".txt,.md,.markdown,.docx" />
+              <button class="btn" id="doc-import-file" style="flex:0 0 auto;">上传并切分</button>
+            </div>
+            <div class="file-hint">上传文件名会作为 source_name 记录，便于后续溯源。</div>
+          </div>
+          <div class="help" id="doc-import-tip">导入后可在右侧/下方预览切片，确认无误再点「发布生效」。</div>
+        </div>
+
+        <div class="card">
+          <h2>
+            文档列表
+            <span class="sub">点击任意一行查看切片与召回预检</span>
+            <button class="btn sm ghost" id="doc-refresh" style="margin-left:auto;">刷新</button>
+          </h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:52px;">ID</th>
+                  <th>标题</th>
+                  <th style="width:88px;">来源</th>
+                  <th style="width:82px;">状态</th>
+                  <th style="width:70px;">切片数</th>
+                  <th style="width:150px;">更新时间</th>
+                  <th style="width:72px;">操作</th>
+                </tr>
+              </thead>
+              <tbody id="doc-list-tbody"></tbody>
+            </table>
+            <div class="empty" id="doc-list-empty" style="display:none;">还没有导入过文档</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="doc-detail" style="display:none;">
+        <h2>
+          <span id="doc-detail-title">文档详情</span>
+          <span class="sub" id="doc-detail-meta"></span>
+          <span style="margin-left:auto;" class="doc-meta">
+            <button class="btn primary sm" id="doc-publish-on">发布生效</button>
+            <button class="btn sm" id="doc-publish-off">下架</button>
+            <button class="btn danger sm" id="doc-delete">删除文档</button>
+          </span>
+        </h2>
+
+        <div class="toolbar" style="margin-bottom:10px;">
+          <div class="grow"><input type="text" id="doc-test-query" placeholder="召回预检：输入一句话，检查该文档切片能否被命中" /></div>
+          <button class="btn" id="doc-test-run">预检</button>
+        </div>
+        <div class="test-result" id="doc-test-result"></div>
+
+        <div class="divider"></div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:150px;">溯源 source_ref</th>
+                <th style="width:78px;">ID</th>
+                <th>标准问</th>
+                <th>正文摘要</th>
+                <th style="width:76px;">状态</th>
+                <th style="width:72px;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="doc-chunks"></tbody>
+          </table>
+          <div class="empty" id="doc-chunks-empty" style="display:none;">该文档没有切片</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================== 3. 会话记录 -->
+    <section class="tab-pane" id="pane-sessions">
+      <div class="card">
+        <h2>🧾 会话记录 <span class="sub">按状态 / 时间 / 转人工 / 差评 / 关键词 / 分类检索，可导出 CSV</span></h2>
+        <div class="toolbar">
+          <select id="ss-status"><option value="">全部状态</option></select>
+          <input type="date" id="ss-since" title="开始日期" />
+          <input type="date" id="ss-until" title="结束日期" />
+          <select id="ss-handoff">
+            <option value="">全部会话</option>
+            <option value="true">仅转人工</option>
+          </select>
+          <select id="ss-badcsat">
+            <option value="">全部评价</option>
+            <option value="true">仅差评</option>
+          </select>
+          <select id="ss-category"><option value="">全部分类</option></select>
+          <div class="grow"><input type="text" id="ss-keyword" placeholder="关键词（会话消息内容 / 最后意图）" /></div>
+          <button class="btn primary" id="ss-query">查询</button>
+          <button class="btn ghost" id="ss-reset">重置</button>
+          <button class="btn" id="ss-export">导出 CSV</button>
+        </div>
+        <div class="help" id="ss-tip"></div>
+      </div>
+
+      <div class="card fill">
+        <div class="table-wrap tall">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:104px;">会话ID</th>
+                <th style="width:104px;">访客</th>
+                <th style="width:148px;">创建时间</th>
+                <th style="width:96px;">状态</th>
+                <th style="width:56px;">轮次</th>
+                <th style="width:64px;">兜底</th>
+                <th>最后意图</th>
+                <th style="width:92px;">分类</th>
+                <th style="width:132px;">转人工原因</th>
+                <th style="width:88px;">归因</th>
+                <th style="width:80px;">满意度</th>
+                <th style="width:62px;">消息</th>
+                <th style="width:70px;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="ss-tbody"></tbody>
+          </table>
+          <div class="empty" id="ss-empty" style="display:none;">没有符合条件的会话</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================== 4. 未解决问题 -->
+    <section class="tab-pane" id="pane-fallbacks">
+      <div class="card">
+        <h2>🕳️ 未解决问题（Badcase） <span class="sub">机器人兜底记录，可一键回流为知识条目（即时生效）</span></h2>
+        <div class="toolbar">
+          <select id="fb-handled">
+            <option value="0">仅未处理</option>
+            <option value="">全部</option>
+            <option value="1">仅已处理</option>
+          </select>
+          <div class="grow"><input type="text" id="fb-filter" placeholder="前端过滤：按问题内容筛选当前列表" /></div>
+          <button class="btn" id="fb-refresh">刷新</button>
+        </div>
+        <div class="help" id="fb-tip">「出现次数」按当前列表中相同问题聚合统计。</div>
+      </div>
+
+      <div class="card fill">
+        <div class="table-wrap tall">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:70px;">ID</th>
+                <th>未解决问题</th>
+                <th style="width:88px;">出现次数</th>
+                <th style="width:150px;">最近出现时间</th>
+                <th style="width:120px;">会话ID</th>
+                <th style="width:84px;">是否已处理</th>
+                <th style="width:118px;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="fb-tbody"></tbody>
+          </table>
+          <div class="empty" id="fb-empty" style="display:none;">暂无未解决问题</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================== 5. 机器人设置 -->
+    <section class="tab-pane" id="pane-bot">
+      <div class="card">
+        <h2>🤖 机器人话术 <span class="sub">后台改完即时生效，无需改代码</span></h2>
+        <div class="grid grid-2">
+          <div>
+            <div class="row">
+              <div class="field">
+                <label for="bot-name">机器人名称</label>
+                <input type="text" id="bot-name" placeholder="智能客服助手" />
+              </div>
+              <div class="field" style="max-width:120px;">
+                <label for="bot-avatar">头像文字</label>
+                <input type="text" id="bot-avatar" placeholder="AI" />
+              </div>
+            </div>
+            <div class="field">
+              <label for="bot-welcome">欢迎语</label>
+              <textarea id="bot-welcome" rows="3"></textarea>
+            </div>
+            <div class="field">
+              <label for="bot-ending">结束语（会话结束时发送）</label>
+              <textarea id="bot-ending" rows="2"></textarea>
+            </div>
+            <div class="field">
+              <label for="bot-fallback">兜底话术（未命中知识库）</label>
+              <textarea id="bot-fallback" rows="2"></textarea>
+            </div>
+            <div class="field">
+              <label for="bot-handoff">转人工话术（在线时段）</label>
+              <textarea id="bot-handoff" rows="2"></textarea>
+            </div>
+          </div>
+          <div>
+            <div class="field">
+              <label for="bot-handoff-offline">非服务时段转人工话术</label>
+              <textarea id="bot-handoff-offline" rows="2"></textarea>
+              <div class="help">可用占位符 <code class="mono">{hours}</code> 自动替换为服务时段说明。</div>
+            </div>
+            <div class="field">
+              <label for="bot-handoff-prefix">情绪/风险触发转人工前缀</label>
+              <textarea id="bot-handoff-prefix" rows="2"></textarea>
+            </div>
+            <div class="field">
+              <label for="bot-handoff-suggest">兜底建议转人工提示</label>
+              <textarea id="bot-handoff-suggest" rows="2"></textarea>
+            </div>
+            <div class="field">
+              <label for="bot-quick">快捷问题（每行一条，展示在用户端）</label>
+              <textarea id="bot-quick" rows="5" placeholder="怎么退货&#10;多久能发货"></textarea>
+            </div>
+            <div class="field">
+              <label for="bot-hours-text">服务时段说明文案</label>
+              <input type="text" id="bot-hours-text" placeholder="每日 09:00-21:00" />
+            </div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+        <h2 style="margin-bottom:6px;">🕘 服务时段 <span class="sub">空时段表示当天不服务（影响「转人工」话术与在线状态）</span></h2>
+        <div id="hours-editor"></div>
+
+        <div class="modal-actions" style="justify-content:flex-start;">
+          <button class="btn primary" id="bot-save">保存机器人配置</button>
+          <button class="btn ghost" id="bot-reload">放弃修改并重新加载</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>🧩 槽位澄清规则 <span class="sub">代码内置（app/config.py SLOT_RULES），仅支持查看；知识条目可绑定槽位</span></h2>
+        <div id="slots-list"></div>
+      </div>
+
+      <!-- =============================================== 向量召回（Embedding） -->
+      <div class="card" id="embed-card">
+        <h2>
+          🧠 向量召回（Embedding）
+          <span class="sub">同义表达的语义召回；与词面检索双通道融合后打分，索引随知识库变更自动失效</span>
+          <span class="ops" style="margin-left:auto;">
+            <button class="btn primary sm" id="embed-rebuild-inc">增量重建</button>
+            <button class="btn sm" id="embed-rebuild-full">全量重建</button>
+            <button class="btn ghost sm" id="embed-refresh">刷新状态</button>
+          </span>
+        </h2>
+
+        <!-- 状态卡片（由 admin.js 渲染） -->
+        <div id="embed-status"><div class="small">状态加载中…</div></div>
+
+        <div class="divider"></div>
+
+        <h2 style="margin-bottom:6px;">
+          🧪 召回对照测试
+          <span class="sub">同一句话分别走「纯词面」与「词面 + 向量」，直观看向量召回带来的差异</span>
+        </h2>
+        <div class="toolbar">
+          <div class="grow">
+            <input type="text" id="embed-query" placeholder="例如：钱什么时候回来（词面命中不了，向量能命中「退款多久能到账」）" />
+          </div>
+          <button class="btn primary" id="embed-test-run">对照测试</button>
+        </div>
+        <div class="embed-chips" id="embed-chips"></div>
+        <div class="test-result" id="embed-result"></div>
+      </div>
+    </section>
+
+    <!-- ======================================================== 6. 触发规则 -->
+    <section class="tab-pane" id="pane-rules">
+      <div class="card">
+        <h2>🚦 转人工触发规则 <span class="sub">调整阈值与开关后即时生效</span></h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:140px;">规则名称</th>
+                <th>说明</th>
+                <th style="width:110px;">阈值</th>
+                <th style="width:90px;">启用</th>
+                <th style="width:120px;">更新时间</th>
+                <th style="width:88px;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="rules-tbody"></tbody>
+          </table>
+          <div class="empty" id="rules-empty" style="display:none;">规则加载中…</div>
+        </div>
+      </div>
+
+      <div class="grid grid-2">
+        <div class="card">
+          <h2>😠 负面情绪词 <span class="sub">命中数量达到阈值时触发转人工（只读）</span></h2>
+          <div class="word-cloud" id="sentiment-words"></div>
+        </div>
+        <div class="card">
+          <h2>⚠️ 高风险关键词 <span class="sub">命中即强制转人工（只读）</span></h2>
+          <div class="word-cloud" id="risky-words"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================== 7. 客服与账号 -->
+    <section class="tab-pane" id="pane-agents">
+      <div class="card">
+        <h2>🙋 客服列表 <span class="sub">在线状态 / 负载 / 进行中会话</span>
+          <button class="btn sm ghost" id="agents-refresh" style="margin-left:auto;">刷新</button>
+        </h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:70px;">ID</th>
+                <th>姓名</th>
+                <th style="width:110px;">在线状态</th>
+                <th style="width:120px;">当前负载 / 上限</th>
+                <th style="width:130px;">进行中会话数</th>
+                <th style="width:110px;">绑定账号</th>
+              </tr>
+            </thead>
+            <tbody id="agents-tbody"></tbody>
+          </table>
+          <div class="empty" id="agents-empty" style="display:none;">暂无客服坐席</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>👤 账号与权限 <span class="sub">四角色：管理员 / 客服主管 / 客服 / 知识运营</span>
+          <button class="btn primary sm" id="acc-new" style="margin-left:auto;">+ 新增账号</button>
+        </h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:60px;">ID</th>
+                <th style="width:150px;">用户名</th>
+                <th>姓名</th>
+                <th style="width:110px;">角色</th>
+                <th style="width:84px;">状态</th>
+                <th style="width:148px;">创建时间</th>
+                <th style="width:120px;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="accounts-tbody"></tbody>
+          </table>
+          <div class="empty" id="accounts-empty" style="display:none;">暂无账号数据</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ============================================================== 弹窗：知识条目 -->
+<div class="modal-mask" id="kb-modal-mask">
+  <div class="modal">
+    <h3 id="kb-modal-title">新增知识条目</h3>
+    <input type="hidden" id="kb-f-id" />
+    <div class="field">
+      <label for="kb-f-question">标准问 *</label>
+      <input type="text" id="kb-f-question" placeholder="例如：怎么申请退货？" />
+    </div>
+    <div class="field">
+      <label for="kb-f-answer">标准答 *</label>
+      <textarea id="kb-f-answer" rows="5" placeholder="机器人将回复的内容"></textarea>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="kb-f-category">分类</label>
+        <input type="text" id="kb-f-category" list="cat-list" placeholder="例如：售后政策" />
+      </div>
+      <div class="field">
+        <label for="kb-f-slot">槽位澄清</label>
+        <select id="kb-f-slot"><option value="">不需要澄清</option></select>
+        <div class="help">选择后：命中该条目会先追问该槽位，再结合回答重新检索。</div>
+      </div>
+      <div class="field" style="max-width:130px;">
+        <label for="kb-f-enabled">状态</label>
+        <select id="kb-f-enabled">
+          <option value="true">启用</option>
+          <option value="false">停用</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="kb-f-similar">相似问法（每行一条，用于提升召回）</label>
+      <textarea id="kb-f-similar" rows="3" placeholder="我要退货&#10;退货怎么操作"></textarea>
+    </div>
+    <div class="field">
+      <label for="kb-f-keywords">关键词（逗号分隔，命中加分）</label>
+      <input type="text" id="kb-f-keywords" placeholder="退货, 退款, 申请" />
+    </div>
+    <div class="help" id="kb-f-source"></div>
+    <div class="modal-actions">
+      <button class="btn" id="kb-cancel">取消</button>
+      <button class="btn primary" id="kb-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================== 弹窗：会话详情 -->
+<div class="modal-mask" id="sess-modal-mask">
+  <div class="modal wide">
+    <h3 id="sess-modal-title">会话详情</h3>
+    <div id="sess-body"></div>
+    <div class="modal-actions">
+      <button class="btn" id="sess-close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================== 弹窗：Badcase 回流 -->
+<div class="modal-mask" id="fb-modal-mask">
+  <div class="modal">
+    <h3>回流为知识条目</h3>
+    <div class="field">
+      <label>用户问题（作为标准问）</label>
+      <textarea id="fb-f-query" rows="2" readonly></textarea>
+    </div>
+    <div class="field">
+      <label for="fb-f-category">分类</label>
+      <input type="text" id="fb-f-category" list="cat-list" placeholder="未分类" />
+    </div>
+    <div class="field">
+      <label for="fb-f-answer">标准答 *</label>
+      <textarea id="fb-f-answer" rows="5" placeholder="填写给用户的准确答复"></textarea>
+    </div>
+    <div class="help">保存后会立即新增一条知识条目并标记该 Badcase 为已处理。</div>
+    <div class="modal-actions">
+      <button class="btn" id="fb-cancel">取消</button>
+      <button class="btn primary" id="fb-save">回流并生效</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================== 弹窗：账号 -->
+<div class="modal-mask" id="acc-modal-mask">
+  <div class="modal">
+    <h3 id="acc-modal-title">新增账号</h3>
+    <input type="hidden" id="acc-f-id" />
+    <div class="field">
+      <label for="acc-f-username">用户名 *（3-30 位）</label>
+      <input type="text" id="acc-f-username" placeholder="例如：agent3" />
+    </div>
+    <div class="field">
+      <label for="acc-f-password">密码 <span id="acc-pwd-hint">*（6-64 位）</span></label>
+      <input type="password" id="acc-f-password" placeholder="至少 6 位" autocomplete="new-password" />
+    </div>
+    <div class="field">
+      <label for="acc-f-name">姓名</label>
+      <input type="text" id="acc-f-name" placeholder="例如：客服小美" />
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="acc-f-role">角色</label>
+        <select id="acc-f-role"></select>
+        <div class="role-hint">客服角色会自动创建对应坐席。</div>
+      </div>
+      <div class="field" style="max-width:150px;">
+        <label for="acc-f-enabled">状态</label>
+        <select id="acc-f-enabled">
+          <option value="true">启用</option>
+          <option value="false">停用</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="acc-cancel">取消</button>
+      <button class="btn primary" id="acc-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<datalist id="cat-list"></datalist>
+<div class="toast" id="toast"></div>
+<script src="/static/admin.js"></script>
+</body>
+</html>

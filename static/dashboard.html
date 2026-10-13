@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>数据看板 · AI 智能客服</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    /* ================================================================
+       数据看板页面独有样式（共享样式在 style.css，不改动）
+       ================================================================ */
+
+    /* 主滚动容器：顶栏固定，内容区滚动 */
+    .dash-main {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding-bottom: 4px;
+      scrollbar-gutter: stable;
+    }
+
+    /* 时间范围分段控件 */
+    .seg { display: inline-flex; gap: 2px; padding: 3px; background: #f1f3f9; border-radius: 10px; }
+    .seg button {
+      border: none; background: transparent; font-family: inherit; font-size: 12.5px;
+      color: var(--ink-2); padding: 5px 13px; border-radius: 8px; cursor: pointer; transition: .15s;
+      white-space: nowrap;
+    }
+    .seg button:hover { color: var(--ink); }
+    .seg button.active {
+      background: #fff; color: var(--brand); font-weight: 600;
+      box-shadow: 0 1px 4px rgba(28, 35, 51, .12);
+    }
+
+    /* 自动刷新开关 */
+    .switch { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; user-select: none; }
+    .switch input { display: none; }
+    .switch .track {
+      width: 34px; height: 19px; border-radius: 999px; background: #d5dbe9;
+      position: relative; transition: .18s; flex: 0 0 auto;
+    }
+    .switch .track::after {
+      content: ''; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px;
+      border-radius: 50%; background: #fff; transition: .18s; box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
+    }
+    .switch input:checked + .track { background: var(--brand); }
+    .switch input:checked + .track::after { transform: translateX(15px); }
+
+    /* 顶栏区间 / 更新时间文案 */
+    .range-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    /* 运行状态徽标行 */
+    .health-strip { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
+
+    /* 趋势图：允许用内联像素高度画柱，并按底部对齐
+       （深色 b1 + 浅色 b2 是上下堆叠的两段，需留出 2 段柱高 + 日期标签的空间） */
+    .trend { align-items: flex-end; height: 190px; justify-content: flex-start; }
+    .trend .col { justify-content: flex-end; max-width: 56px; }
+    .trend .col .stack { display: flex; flex-direction: column; justify-content: flex-end; width: 100%; gap: 2px; }
+    .trend .day { white-space: nowrap; }
+    .legend-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+    /* 表格容器限制高度，避免长表格把页面撑得过长 */
+    .table-wrap { max-height: 340px; }
+    .table-wrap table { font-size: 12.5px; }
+    .col-q { max-width: 460px; word-break: break-word; }
+
+    /* 骨架屏（首次加载） */
+    .skel {
+      background: linear-gradient(90deg, #eef1f8 25%, #f6f8fd 37%, #eef1f8 63%);
+      background-size: 400% 100%;
+      animation: skel 1.3s ease infinite;
+      border-radius: 8px;
+      color: transparent !important;
+    }
+    @keyframes skel { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+    .loading-text { padding: 26px; text-align: center; color: var(--ink-3); font-size: 12.5px; }
+
+    /* 客服负载行 */
+    .agent-row { padding: 8px 0; border-bottom: 1px dashed var(--line); }
+    .agent-row:last-child { border-bottom: none; }
+
+    /* 页尾口径说明 */
+    .notes-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+    .notes-list li { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; color: var(--ink-2); line-height: 1.6; }
+    .notes-list li .k { flex: 0 0 auto; }
+    .notes-list li span:last-child { word-break: break-word; }
+
+    @media (max-width: 720px) {
+      .topbar { align-items: flex-start; }
+      .health-strip { justify-content: flex-start; }
+      .table-wrap { max-height: 260px; }
+    }
+  </style>
+</head>
+<body>
+<div class="app wide">
+  <!-- ============================================ 顶部栏 -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">DB</div>
+      <div>
+        <h1>数据看板</h1>
+        <p class="range-line" id="range-line">
+          <span id="range-text">数据区间加载中…</span>
+          <span class="badge gray" id="updated-badge">尚未更新</span>
+        </p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <div class="seg" id="range-seg">
+        <button type="button" data-days="1">近 1 天</button>
+        <button type="button" data-days="7" class="active">近 7 天</button>
+        <button type="button" data-days="30">近 30 天</button>
+      </div>
+      <button type="button" class="btn primary sm" id="btn-refresh">刷新</button>
+      <label class="switch" title="默认每 15 秒自动刷新一次">
+        <input type="checkbox" id="auto-refresh" checked />
+        <span class="track"></span>
+        <span>自动刷新</span>
+      </label>
+      <span class="divider" style="width:1px;height:20px;margin:0 2px;"></span>
+      <a class="btn ghost sm" href="/">对话页</a>
+      <a class="btn ghost sm" href="/agent">客服工作台</a>
+      <a class="btn ghost sm" href="/admin">后台管理</a>
+    </div>
+  </header>
+
+  <!-- ============================================ 内容区 -->
+  <main class="dash-main" id="dash-main">
+
+    <!-- 运行状态 -->
+    <section class="card">
+      <div class="flex-between">
+        <h2 style="margin:0;">运行状态 <span class="sub" id="overview-sub">—</span></h2>
+        <div class="health-strip" id="health-strip">
+          <span class="badge gray">加载中…</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 第一排：核心 KPI -->
+    <section class="card">
+      <h2>核心指标 <span class="sub">解决率 / 转人工率 / 满意度，口径见页面底部</span></h2>
+      <div class="kpis" id="kpi-core"></div>
+    </section>
+
+    <!-- 第二排：性能 KPI -->
+    <section class="card">
+      <h2>性能指标 <span class="sub">响应速度 / 兜底量 / 会话状态</span></h2>
+      <div class="kpis" id="kpi-perf"></div>
+    </section>
+
+    <!-- 会话趋势 + 意图分布 -->
+    <div class="grid grid-2">
+      <section class="card">
+        <h2>会话趋势 <span class="sub" id="trend-sub">按天统计</span></h2>
+        <div id="trend-box"><div class="loading-text">加载中…</div></div>
+        <p class="help legend-line" style="margin-top:10px;">
+          <span class="dot" style="background:linear-gradient(135deg,#4f6ef7,#7d5cf6);"></span>
+          <span>深色 = 机器人解决</span>
+          <span class="muted">·</span>
+          <span class="dot" style="background:#d9e0f5;"></span>
+          <span>浅色 = 转人工</span>
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>意图 / 分类分布 <span class="sub">按命中次数降序</span></h2>
+        <div id="intent-box"><div class="loading-text">加载中…</div></div>
+      </section>
+    </div>
+
+    <!-- 转人工触发原因 + 客服负载 -->
+    <div class="grid grid-2">
+      <section class="card">
+        <h2>转人工触发原因 <span class="sub">按触发次数降序</span></h2>
+        <div id="reason-box"><div class="loading-text">加载中…</div></div>
+      </section>
+
+      <section class="card">
+        <h2>客服负载 <span class="sub" id="agent-sub">—</span></h2>
+        <div id="agent-box"><div class="loading-text">加载中…</div></div>
+      </section>
+    </div>
+
+    <!-- TOP 未解决问题 -->
+    <section class="card">
+      <h2>TOP 未解决问题 <span class="sub">产品优化抓手：兜底问题聚合（按出现次数降序）</span></h2>
+      <div id="unresolved-box"><div class="loading-text">加载中…</div></div>
+    </section>
+
+    <!-- 最近转人工会话 -->
+    <section class="card">
+      <h2>最近转人工会话 <span class="sub">最近 10 条 /handoff_only=true</span></h2>
+      <div id="handoff-box"><div class="loading-text">加载中…</div></div>
+    </section>
+
+    <!-- 页尾：指标口径说明（固定展示，始终渲染） -->
+    <section class="card" id="notes-card">
+      <h2>指标口径说明 <span class="sub">由后端 /api/admin/overview 的 metric_notes 下发，确保团队理解一致</span></h2>
+      <div id="notes-box"><div class="loading-text">加载中…</div></div>
+    </section>
+
+    <p class="help" style="text-align:center;margin:0 0 6px;">
+      数据来源：<span class="mono">/api/admin/overview</span> ·
+      <span class="mono">/api/health</span> ·
+      <span class="mono">/api/admin/sessions</span> ·
+      <span class="mono">/api/admin/agents</span>
+    </p>
+  </main>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="/static/dashboard.js"></script>
+</body>
+</html>
